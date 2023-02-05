@@ -33,10 +33,20 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-class TriangleSurfaceSampler():
-    def __init__(self, context, o, num_samples, rnd, colorize=None, constant_color=None, exact_number_of_points=False):
+
+class TriangleSurfaceSampler:
+    def __init__(self):
         pass
-    def mesh_to_pointcloud(self, context, o, num_samples, rnd, colorize=None, constant_color=None, compute_normals = False, exact_number_of_points=False):
+
+    @staticmethod
+    def mesh_to_pointcloud(context, o, num_samples, rnd, colorize=None, constant_color=None,
+                           compute_normals=False, exact_number_of_points=False):
+
+        def _normalize(v, vmin, vmax):
+            return (v - vmin) / (vmax - vmin)
+
+        def _interpolate(nv, vmin, vmax):
+            return vmin + (vmax - vmin) * nv
 
         def _remap(v, min1, max1, min2, max2, ):
             def clamp(v, vmin, vmax):
@@ -48,17 +58,11 @@ class TriangleSurfaceSampler():
                     return vmax
                 return v
 
-            def normalize(v, vmin, vmax):
-                return (v - vmin) / (vmax - vmin)
-
-            def interpolate(nv, vmin, vmax):
-                return vmin + (vmax - vmin) * nv
-
             if (max1 - min1 == 0):
                 # handle zero division when min1 = max1
                 return min2
 
-            r = interpolate(normalize(v, min1, max1), min2, max2)
+            r = _interpolate(_normalize(v, min1, max1), min2, max2)
             return r
 
         def _random_point_in_triangle(a, b, c, ):
@@ -67,77 +71,7 @@ class TriangleSurfaceSampler():
             p = (1 - math.sqrt(r1)) * a + (math.sqrt(r1) * (1 - r2)) * b + (math.sqrt(r1) * r2) * c
             return p
 
-        depsgraph = context.evaluated_depsgraph_get()
-        if (o.modifiers):
-            owner = o.evaluated_get(depsgraph)
-            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
-        else:
-            owner = o
-            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
-
-        bm = bmesh.new()
-        bm.from_mesh(me)
-        bmesh.ops.triangulate(bm, faces=bm.faces)
-        bm.verts.ensure_lookup_table()
-        bm.faces.ensure_lookup_table()
-
-        if (len(bm.faces) == 0):
-            raise Exception("Mesh has no faces")
-
-        areas = tuple([p.calc_area() for p in bm.faces])
-        if (sum(areas) == 0.0):
-            raise Exception("Mesh surface area is zero")
-        area_min = min(areas)
-        area_max = max(areas)
-        avg_ppf = num_samples / len(areas)
-        area_med = statistics.median(areas)
-        nums = []
-        for p in bm.faces:
-            r = p.calc_area() / area_med
-            nums.append(avg_ppf * r)
-
-        max_ppf = max(nums)
-        min_ppf = min(nums)
-
-        vs = []
-        ns = []
-        cs = []
-
-        if (colorize == 'UVTEX'):
-            try:
-                if (o.active_material is None):
-                    raise Exception("Cannot find active material")
-                uvtexnode = o.active_material.node_tree.nodes.active
-                if (uvtexnode is None):
-                    raise Exception("Cannot find active image texture in active material")
-                uvimage = uvtexnode.image
-                if (uvimage is None):
-                    raise Exception("Cannot find active image texture with loaded image in active material")
-                uvimage.update()
-                uvarray = np.asarray(uvimage.pixels)
-                uvarray = uvarray.reshape((uvimage.size[1], uvimage.size[0], 4))
-                uvlayer = bm.loops.layers.uv.active
-                if (uvlayer is None):
-                    raise Exception("Cannot find active UV layout")
-            except Exception as e:
-                raise Exception(str(e))
-        if (colorize == 'VCOLS'):
-            try:
-                col_layer = bm.loops.layers.color.active
-                if (col_layer is None):
-                    raise Exception()
-            except Exception:
-                raise Exception("Cannot find active vertex colors")
-        if (colorize in ('GROUP_MONO', 'GROUP_COLOR')):
-            try:
-                group_layer = bm.verts.layers.deform.active
-                if (group_layer is None):
-                    raise Exception()
-                group_layer_index = o.vertex_groups.active.index
-            except Exception:
-                raise Exception("Cannot find active vertex group")
-
-        def generate(poly, vs, ns, cs, override_num=None, ):
+        def _generate(poly, vs, ns, cs, override_num=None, ):
             ps = poly.verts
             tri = (ps[0].co, ps[1].co, ps[2].co)
             # if num is 0, it can happen when mesh has large and very small polygons, increase number of samples and eventually all polygons gets covered
@@ -209,15 +143,86 @@ class TriangleSurfaceSampler():
                     cs.append((c.r, c.g, c.b,))
 
 
+
+        depsgraph = context.evaluated_depsgraph_get()
+        if (o.modifiers):
+            owner = o.evaluated_get(depsgraph)
+            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+        else:
+            owner = o
+            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bmesh.ops.triangulate(bm, faces=bm.faces)
+        bm.verts.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        if (len(bm.faces) == 0):
+            raise Exception("Mesh has no faces")
+
+        areas = tuple([p.calc_area() for p in bm.faces])
+        if (sum(areas) == 0.0):
+            raise Exception("Mesh surface area is zero")
+        area_min = min(areas)
+        area_max = max(areas)
+        avg_ppf = num_samples / len(areas)
+        area_med = statistics.median(areas)
+        nums = []
+        for p in bm.faces:
+            r = p.calc_area() / area_med
+            nums.append(avg_ppf * r)
+
+        max_ppf = max(nums)
+        min_ppf = min(nums)
+
+        vs = []
+        ns = []
+        cs = []
+
+        if (colorize == 'UVTEX'):
+            try:
+                if (o.active_material is None):
+                    raise Exception("Cannot find active material")
+                uvtexnode = o.active_material.node_tree.nodes.active
+                if (uvtexnode is None):
+                    raise Exception("Cannot find active image texture in active material")
+                uvimage = uvtexnode.image
+                if (uvimage is None):
+                    raise Exception("Cannot find active image texture with loaded image in active material")
+                uvimage.update()
+                uvarray = np.asarray(uvimage.pixels)
+                uvarray = uvarray.reshape((uvimage.size[1], uvimage.size[0], 4))
+                uvlayer = bm.loops.layers.uv.active
+                if (uvlayer is None):
+                    raise Exception("Cannot find active UV layout")
+            except Exception as e:
+                raise Exception(str(e))
+        if (colorize == 'VCOLS'):
+            try:
+                col_layer = bm.loops.layers.color.active
+                if (col_layer is None):
+                    raise Exception()
+            except Exception:
+                raise Exception("Cannot find active vertex colors")
+        if (colorize in ('GROUP_MONO', 'GROUP_COLOR')):
+            try:
+                group_layer = bm.verts.layers.deform.active
+                if (group_layer is None):
+                    raise Exception()
+                group_layer_index = o.vertex_groups.active.index
+            except Exception:
+                raise Exception("Cannot find active vertex group")
+
         for poly in bm.faces:
-            generate(poly, vs, ns, cs, )
+            _generate(poly, vs, ns, cs, )
 
         if (exact_number_of_points):
             if (len(vs) < num_samples):
                 while (len(vs) < num_samples):
                     # generate one sample in random face until full
                     poly = bm.faces[rnd.randrange(len(bm.faces))]
-                    generate(poly, vs, ns, cs, override_num=1, )
+                    _generate(poly, vs, ns, cs, override_num=1, )
             if (len(vs) > num_samples):
                 a = np.concatenate((vs, ns, cs), axis=1, )
                 np.random.shuffle(a)
@@ -233,6 +238,3 @@ class TriangleSurfaceSampler():
             raise Exception("No points generated, increase number of points or decrease minimal distance")
 
         return vs, ns, cs
-
-
-
