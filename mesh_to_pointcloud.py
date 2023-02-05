@@ -38,7 +38,7 @@ class TriangleSurfaceSampler():
         pass
     def mesh_to_pointcloud(self, context, o, num_samples, rnd, colorize=None, constant_color=None, compute_normals = False, exact_number_of_points=False):
 
-        def remap(v, min1, max1, min2, max2, ):
+        def _remap(v, min1, max1, min2, max2, ):
             def clamp(v, vmin, vmax):
                 if (vmax <= vmin):
                     raise ValueError("Maximum value is smaller than or equal to minimum.")
@@ -61,7 +61,7 @@ class TriangleSurfaceSampler():
             r = interpolate(normalize(v, min1, max1), min2, max2)
             return r
 
-        def random_point_in_triangle(a, b, c, ):
+        def _random_point_in_triangle(a, b, c, ):
             r1 = rnd.random()
             r2 = rnd.random()
             p = (1 - math.sqrt(r1)) * a + (math.sqrt(r1) * (1 - r2)) * b + (math.sqrt(r1) * r2) * c
@@ -141,28 +141,31 @@ class TriangleSurfaceSampler():
             ps = poly.verts
             tri = (ps[0].co, ps[1].co, ps[2].co)
             # if num is 0, it can happen when mesh has large and very small polygons, increase number of samples and eventually all polygons gets covered
-            num = int(round(remap(poly.calc_area(), area_min, area_max, min_ppf, max_ppf)))
+            num = int(round(_remap(poly.calc_area(), area_min, area_max, min_ppf, max_ppf)))
             if (override_num is not None):
                 num = override_num
             for i in range(num):
-                v = random_point_in_triangle(*tri)
+                # Generate POINTS
+                v = _random_point_in_triangle(*tri)
                 vs.append(v.to_tuple())
 
-                if (poly.smooth):
-                    a = poly.verts[0].normal
-                    b = poly.verts[1].normal
-                    c = poly.verts[2].normal
-                    nws = poly_3d_calc([a, b, c, ], v)
+                # Generate NORMALS
+                if compute_normals:
+                    if (poly.smooth):
+                        a = poly.verts[0].normal
+                        b = poly.verts[1].normal
+                        c = poly.verts[2].normal
+                        nws = poly_3d_calc([a, b, c, ], v)
 
-                    nx = a.x * nws[0] + b.x * nws[1] + c.x * nws[2]
-                    ny = a.y * nws[0] + b.y * nws[1] + c.y * nws[2]
-                    nz = a.z * nws[0] + b.z * nws[1] + c.z * nws[2]
-                    normal = Vector((nx, ny, nz)).normalized()
-                    ns.append(normal.to_tuple())
-                else:
-                    ns.append(poly.normal.to_tuple())
+                        nx = a.x * nws[0] + b.x * nws[1] + c.x * nws[2]
+                        ny = a.y * nws[0] + b.y * nws[1] + c.y * nws[2]
+                        nz = a.z * nws[0] + b.z * nws[1] + c.z * nws[2]
+                        normal = Vector((nx, ny, nz)).normalized()
+                        ns.append(normal.to_tuple())
+                    else:
+                        ns.append(poly.normal.to_tuple())
 
-
+                # Generate COLORS
                 if (colorize is None):
                     cs.append((1.0, 0.0, 0.0,))
                 elif (colorize == 'CONSTANT'):
@@ -184,8 +187,8 @@ class TriangleSurfaceSampler():
                                                     *uvtriangle, )
                     w, h = uvimage.size
                     # x,y % 1.0 to wrap around if uv coordinate is outside 0.0-1.0 range
-                    x = int(round(remap(uvpoint.x % 1.0, 0.0, 1.0, 0, w - 1)))
-                    y = int(round(remap(uvpoint.y % 1.0, 0.0, 1.0, 0, h - 1)))
+                    x = int(round(_remap(uvpoint.x % 1.0, 0.0, 1.0, 0, w - 1)))
+                    y = int(round(_remap(uvpoint.y % 1.0, 0.0, 1.0, 0, h - 1)))
                     cs.append(tuple(uvarray[y][x][:3].tolist()))
                 elif (colorize == 'GROUP_MONO'):
                     ws = poly_3d_calc([poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, ], v)
@@ -200,7 +203,7 @@ class TriangleSurfaceSampler():
                     bw = poly.verts[1][group_layer].get(group_layer_index, 0.0)
                     cw = poly.verts[2][group_layer].get(group_layer_index, 0.0)
                     m = aw * ws[0] + bw * ws[1] + cw * ws[2]
-                    hue = remap(1.0 - m, 0.0, 1.0, 0.0, 1 / 1.5)
+                    hue = _remap(1.0 - m, 0.0, 1.0, 0.0, 1 / 1.5)
                     c = Color()
                     c.hsv = (hue, 1.0, 1.0,)
                     cs.append((c.r, c.g, c.b,))
