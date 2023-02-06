@@ -79,14 +79,14 @@ class TriangleSurfaceSampler:
             ps = poly.verts
             tri = (ps[0].co, ps[1].co, ps[2].co)
             # if num is 0, it can happen when mesh has large and very small polygons, increase number of samples and eventually all polygons gets covered
-            # num = int(round(_remap(poly.calc_area(), area_min, area_max, min_ppf, max_ppf)))
-
+            num = int(round(_remap(poly.calc_area(), area_min, area_max, min_ppf, max_ppf)))
 
             stop = time.time_ns() / (10 ** 9)
             pre_vs_time.append(stop-start)
 
             if (override_num is not None):
                 num = override_num
+
             for i in range(num):
                 # Generate POINTS
                 start = time.time_ns() / (10 ** 9)
@@ -154,6 +154,7 @@ class TriangleSurfaceSampler:
                     c.hsv = (hue, 1.0, 1.0,)
                     cs.append((c.r, c.g, c.b,))
 
+
         start = time.time_ns() / (10 ** 9)
         depsgraph = context.evaluated_depsgraph_get()
         if (o.modifiers):
@@ -169,7 +170,6 @@ class TriangleSurfaceSampler:
         bm.verts.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
 
-        logging.info(f"bm faces {len(bm.faces)} and mesh poly {len(o.data.polygons)}")
         if (len(bm.faces) == 0):
             raise Exception("Mesh has no faces")
 
@@ -180,17 +180,17 @@ class TriangleSurfaceSampler:
         areas = tuple([p.calc_area() for p in bm.faces])
         if (sum(areas) == 0.0):
             raise Exception("Mesh surface area is zero")
-        # area_min = min(areas)
-        # area_max = max(areas)
+        area_min = min(areas)
+        area_max = max(areas)
         avg_ppf = num_samples / len(areas)
         area_med = statistics.median(areas)
         nums = []
-        for i in range(len(bm.faces)):
-            r = areas[i] / area_med
+        for p in bm.faces:
+            r = p.calc_area() / area_med
             nums.append(avg_ppf * r)
 
-        # max_ppf = max(nums)
-        # min_ppf = min(nums)
+        max_ppf = max(nums)
+        min_ppf = min(nums)
 
         stop = time.time_ns() / (10 ** 9)
         logging.info(f"Computing-Preprocessing took {stop - start1}")
@@ -235,11 +235,15 @@ class TriangleSurfaceSampler:
             except Exception:
                 raise Exception("Cannot find active vertex group")
 
-        for i, poly in enumerate(bm.faces):
-            number_of_points = int(nums[i])
-            if number_of_points > 0:
-                _generate(poly, vs, ns, cs, override_num=number_of_points)
+        for poly in bm.faces:
+            # number_of_points = int(nums[i])
+            # if number_of_points > 0:
+            #     _generate(poly, vs, ns, cs, override_num=number_of_points)
+            _generate(poly, vs, ns, cs)
+        # logging.info(f"Final vs {vs}")
+        logging.info(f"Final vs lem {len(vs)}")
 
+            # _generate(poly, vs, ns, cs)
         logging.info(f"Pre-Generate took {sum(pre_vs_time)}")
         logging.info(f"Generate took {sum(vs_time)}")
 
@@ -265,9 +269,9 @@ class TriangleSurfaceSampler:
 
         start = time.time_ns() / (10 ** 9)
 
-        vs = np.array(vs, dtype=np.int32)
-        ns = np.array(ns, dtype=np.int32)
-        cs = np.array(cs, dtype=np.int32)
+        vs = np.array(vs, dtype=np.float)
+        ns = np.array(ns, dtype=np.float)
+        cs = np.array(cs, dtype=np.float)
 
         stop = time.time_ns() / (10 ** 9)
         logging.info(f"Post-Preprocessing took {stop-start}")
