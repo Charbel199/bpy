@@ -22,13 +22,8 @@
 # optimize it and add new functionalities to it with the aim to use it purely in code (Not as a blender add-on).
 
 import numpy as np
-import statistics
-import bpy
+import cupy as np
 import bmesh
-from mathutils import Matrix, Vector, Quaternion, Color
-from mathutils.geometry import barycentric_transform
-from mathutils.interpolate import poly_3d_calc
-import math
 import logging
 import time
 
@@ -69,8 +64,14 @@ class TriangleSurfaceSampler:
         # Areas and weighted indices
         areas = [p.calc_area() for p in bm.faces]
         areas = np.asarray(areas)
-        probabilities = areas/sum(areas)
+        logging.info(f"After areas")
+        logging.info(areas.shape)
+        sum_of_areas = np.sum(areas)
+        probabilities = areas/sum_of_areas
+        logging.info(probabilities.shape)
+        logging.info(f"After probas")
         weighted_random_indices = np.random.choice(range(len(areas)), size=num_samples, p=probabilities)
+        logging.info(f"After weighted_random_indices")
         v1_xyz = []
         v2_xyz = []
         v3_xyz = []
@@ -82,23 +83,27 @@ class TriangleSurfaceSampler:
         v1_xyz = np.asarray(v1_xyz)
         v2_xyz = np.asarray(v2_xyz)
         v3_xyz = np.asarray(v3_xyz)
-
+        logging.info(f"After v1_xyz")
         v1_xyz = v1_xyz[weighted_random_indices]
         v2_xyz = v2_xyz[weighted_random_indices]
         v3_xyz = v3_xyz[weighted_random_indices]
 
         u = np.random.rand(num_samples,1)
         v = np.random.rand(num_samples,1)
+        logging.info(f"random")
         is_a_problem = u+v>1
         u[is_a_problem] = 1 - u[is_a_problem]
         v[is_a_problem] = 1 - v[is_a_problem]
         w = 1 - (u+v)
 
         vs = (v1_xyz * u) + (v2_xyz * v) + (w*v3_xyz)
-        vs = vs.astype(np.float)
+        logging.info(f"After vs1")
+        vs = vs.astype(np.float64)
+        logging.info(f"After vs2")
         ns = []
-        cs = np.full_like(vs, (1.0, 0.0, 0.0,))
-        ns = np.array(ns, dtype=np.float)
-        cs = np.array(cs, dtype=np.float)
-
-        return vs, ns, cs
+        cs = np.full_like(vs, np.array([1.0, 0.0, 0.0]))
+        ns = np.asarray(ns)
+        cs = np.asarray(cs)
+        logging.info(f"End")
+        np.cuda.Stream.null.synchronize()
+        return vs.get(), ns.get(), cs.get()
