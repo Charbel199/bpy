@@ -42,9 +42,30 @@ class TriangleSurfaceSampler:
         if (len(bm.faces) == 0):
             raise Exception("Mesh has no faces")
         stop = time.time_ns() / (10 ** 9)
+        polys = np.asarray(bm.faces)
         logging.info(f"Blender-Preprocessing took {stop - start}")
 
-        polys = np.asarray(bm.faces)
+        # ================================================
+        # Prepare textures
+        # ================================================
+        if (colorize == 'UVTEX'):
+            try:
+                if (o.active_material is None):
+                    raise Exception("Cannot find active material")
+                uvtexnode = o.active_material.node_tree.nodes.active
+                if (uvtexnode is None):
+                    raise Exception("Cannot find active image texture in active material")
+                uvimage = uvtexnode.image
+                if (uvimage is None):
+                    raise Exception("Cannot find active image texture with loaded image in active material")
+                uvimage.update()
+                uvarray = np.asarray(uvimage.pixels)
+                uvarray = uvarray.reshape((uvimage.size[1], uvimage.size[0], 4))
+                uvlayer = bm.loops.layers.uv.active
+                if (uvlayer is None):
+                    raise Exception("Cannot find active UV layout")
+            except Exception as e:
+                raise Exception(str(e))
 
         # ================================================
         # Prepare vertices
@@ -63,7 +84,6 @@ class TriangleSurfaceSampler:
             return poly.calc_area()
 
         areas = np.array(list(map(_get_area, polys)))
-
 
         # ================================================
         # Prepare weighted random indices
@@ -88,11 +108,51 @@ class TriangleSurfaceSampler:
         v[is_a_problem] = 1 - v[is_a_problem]
         w = 1 - (u + v)
         vs = (v1_xyz * u) + (v2_xyz * v) + (w * v3_xyz)
-        vs = vs.astype(np.float)
+
+        def _apply_texture_color(poly, point):
+            def _remap(v, min1, max1, min2, max2, ):
+                def clamp(v, vmin, vmax):
+                    if (vmax <= vmin):
+                        raise ValueError("Maximum value is smaller than or equal to minimum.")
+                    if (v <= vmin):
+                        return vmin
+                    if (v >= vmax):
+                        return vmax
+                    return v
+
+                def normalize(v, vmin, vmax):
+                    return (v - vmin) / (vmax - vmin)
+
+                def interpolate(nv, vmin, vmax):
+                    return vmin + (vmax - vmin) * nv
+
+                if (max1 - min1 == 0):
+                    # handle zero division when min1 = max1
+                    return min2
+
+                r = interpolate(normalize(v, min1, max1), min2, max2)
+                return r
+
+            if (colorize == 'UVTEX'):
+                uvtriangle = []
+                for l in poly.loops:
+                    uvtriangle.append(Vector(l[uvlayer].uv.to_tuple() + (0.0,)))
+                uvpoint = barycentric_transform(point, poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, *uvtriangle, )
+                w, h = uvimage.size
+                # x,y % 1.0 to wrap around if uv coordinate is outside 0.0-1.0 range
+                x = int(round(_remap(uvpoint.x % 1.0, 0.0, 1.0, 0, w - 1)))
+                y = int(round(_remap(uvpoint.y % 1.0, 0.0, 1.0, 0, h - 1)))
+                return uvarray[y][x][:3].tolist()
+
+        # ================================================
+        # Apply texture
+        # ================================================
+        if (colorize == 'UVTEX'):
+            cs = np.array(list(map(_apply_texture_color, polys[weighted_random_indices], vs)))
+        else:
+            cs = np.full_like(vs, (1.0, 0.0, 0.0,) if not constant_color else constant_color)
 
         ns = []
-        cs = np.full_like(vs, (1.0, 0.0, 0.0,))
         ns = np.array(ns, dtype=np.float)
-        cs = np.array(cs, dtype=np.float)
 
         return vs, ns, cs
