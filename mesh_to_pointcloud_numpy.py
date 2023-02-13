@@ -1,11 +1,7 @@
 import numpy as np
-import statistics
-import bpy
 import bmesh
 from mathutils import Matrix, Vector, Quaternion, Color
 from mathutils.geometry import barycentric_transform
-from mathutils.interpolate import poly_3d_calc
-import math
 import logging
 import time
 from itertools import repeat
