@@ -9,6 +9,7 @@ import math
 import logging
 import time
 from itertools import repeat
+import cv2
 
 logging.basicConfig(level=logging.INFO)
 
@@ -50,28 +51,28 @@ class TriangleSurfaceSampler:
         # Prepare textures
         # ================================================
         start = time.time_ns() / (10 ** 9)
-        if (colorize == 'UVTEX'):
+        if colorize == 'UVTEX':
             try:
-
-                if (o.active_material is None):
+                if o.active_material is None:
                     raise Exception("Cannot find active material")
                 uvtexnode = o.active_material.node_tree.nodes.active
-                if (uvtexnode is None):
+                if uvtexnode is None:
                     raise Exception("Cannot find active image texture in active material")
                 uvimage = uvtexnode.image
-                if (uvimage is None):
+                if uvimage is None:
                     raise Exception("Cannot find active image texture with loaded image in active material")
                 uvimage.update()
+                file_path = uvimage.filepath
                 start1 = time.time_ns() / (10 ** 9)
-                uvarray = np.asarray(uvimage.pixels)
+                uvarray = cv2.imread(file_path)
+                uvarray = uvarray / 255.0
+                uvarray = uvarray[..., ::-1]
+                uvarray = np.concatenate((uvarray, np.ones((uvarray.shape[0], uvarray.shape[1], 1))), axis=2)
+                logging.info(f"Working with texture {file_path} with shape {uvarray.shape}")
                 stop1 = time.time_ns() / (10 ** 9)
-                conversion_summary.append(f"UVarray as numpy array: {stop1 - start1}")
-                start1 = time.time_ns() / (10 ** 9)
-                uvarray = uvarray.reshape((uvimage.size[1], uvimage.size[0], 4))
-                stop1 = time.time_ns() / (10 ** 9)
-                conversion_summary.append(f"UVarray reshape: {stop1 - start1}")
+                conversion_summary.append(f"Texture to numpy array: {stop1 - start1}")
                 uvlayer = bm.loops.layers.uv.active
-                if (uvlayer is None):
+                if uvlayer is None:
                     raise Exception("Cannot find active UV layout")
             except Exception as e:
                 logging.info(f"Error while loading texture {str(e)}")
