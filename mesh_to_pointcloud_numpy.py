@@ -24,12 +24,13 @@ class TriangleSurfaceSampler:
 
         num_samples = int(num_samples)
         conversion_summary = []
+
         # ================================================
         # Prepare Mesh
         # ================================================
         start = time.time_ns() / (10 ** 9)
         depsgraph = context.evaluated_depsgraph_get()
-        if (o.modifiers):
+        if o.modifiers:
             owner = o.evaluated_get(depsgraph)
             me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
         else:
@@ -40,7 +41,7 @@ class TriangleSurfaceSampler:
         bmesh.ops.triangulate(bm, faces=bm.faces)
         bm.verts.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
-        if (len(bm.faces) == 0):
+        if len(bm.faces) == 0:
             raise Exception("Mesh has no faces")
         stop = time.time_ns() / (10 ** 9)
         polys = np.asarray(bm.faces)
@@ -80,10 +81,12 @@ class TriangleSurfaceSampler:
         logging.info("Done Prepare textures")
         stop = time.time_ns() / (10 ** 9)
         conversion_summary.append(f"Prepare textures: {stop - start}")
+
         # ================================================
         # Prepare vertices
         # ================================================
         start = time.time_ns() / (10 ** 9)
+
         def _get_vertex(poly, index=0):
             return poly.verts[index].co
 
@@ -93,10 +96,12 @@ class TriangleSurfaceSampler:
         logging.info("Done Prepare vertices")
         stop = time.time_ns() / (10 ** 9)
         conversion_summary.append(f"Prepare vertices: {stop - start}")
+
         # ================================================
         # Prepare areas
         # ================================================
         start = time.time_ns() / (10 ** 9)
+
         def _get_area(poly):
             return poly.calc_area()
 
@@ -104,6 +109,7 @@ class TriangleSurfaceSampler:
         logging.info("Done Prepare areas")
         stop = time.time_ns() / (10 ** 9)
         conversion_summary.append(f"Prepare areas: {stop - start}")
+
         # ================================================
         # Prepare weighted random indices
         # ================================================
@@ -113,6 +119,7 @@ class TriangleSurfaceSampler:
         logging.info("Done Prepare weighted random indices")
         stop = time.time_ns() / (10 ** 9)
         conversion_summary.append(f"Prepare weighted random indices: {stop - start}")
+
         # ================================================
         # Fetch random polygons' vertices
         # ================================================
@@ -123,6 +130,7 @@ class TriangleSurfaceSampler:
         logging.info("Done Fetch random polygons' vertices")
         stop = time.time_ns() / (10 ** 9)
         conversion_summary.append(f"Fetch random polygons' vertices: {stop - start}")
+
         # ================================================
         # Create points
         # ================================================
@@ -142,14 +150,15 @@ class TriangleSurfaceSampler:
         # Apply texture
         # ================================================
         start = time.time_ns() / (10 ** 9)
+
         def _apply_texture_color(poly, point):
             def _remap(v, min1, max1, min2, max2, ):
                 def clamp(v, vmin, vmax):
-                    if (vmax <= vmin):
+                    if vmax <= vmin:
                         raise ValueError("Maximum value is smaller than or equal to minimum.")
-                    if (v <= vmin):
+                    if v <= vmin:
                         return vmin
-                    if (v >= vmax):
+                    if v >= vmax:
                         return vmax
                     return v
 
@@ -159,14 +168,14 @@ class TriangleSurfaceSampler:
                 def interpolate(nv, vmin, vmax):
                     return vmin + (vmax - vmin) * nv
 
-                if (max1 - min1 == 0):
+                if max1 - min1 == 0:
                     # handle zero division when min1 = max1
                     return min2
 
                 r = interpolate(normalize(v, min1, max1), min2, max2)
                 return r
 
-            if (colorize == 'UVTEX'):
+            if colorize == 'UVTEX':
                 uvtriangle = []
                 for l in poly.loops:
                     uvtriangle.append(Vector(l[uvlayer].uv.to_tuple() + (0.0,)))
@@ -177,7 +186,8 @@ class TriangleSurfaceSampler:
                 x = int(round(_remap(uvpoint.x % 1.0, 0.0, 1.0, 0, w - 1)))
                 y = int(round(_remap(uvpoint.y % 1.0, 0.0, 1.0, 0, h - 1)))
                 return uvarray[y][x][:3].tolist()
-        if (colorize == 'UVTEX'):
+
+        if colorize == 'UVTEX':
             cs = np.array(list(map(_apply_texture_color, polys[weighted_random_indices], vs)))
         else:
             cs = np.full_like(vs, (1.0, 0.0, 0.0,) if not constant_color else constant_color)
@@ -189,9 +199,9 @@ class TriangleSurfaceSampler:
         # Get normals
         # ================================================
         ns = []
-        ns = np.array(ns, dtype=np.float)
+        ns = np.array(ns)
         logging.info(f"\n=========================")
-        logging.info(f"SUMMARY")
+        logging.info(f"SUMMARY:")
         logging.info("\n".join(conversion_summary))
         logging.info(f"=========================\n")
         return vs, ns, cs
